@@ -1,0 +1,139 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+rm(list=ls(all=TRUE))
+```
+
+```{r}
+library(dplyr)
+library(graphics)
+library(forecast)
+```
+
+```{r}
+full <- read.csv('train/historical_volume.csv')
+str(full)
+```
+
+
+```{r}
+full[!duplicated(full[1:2]),c('Agency','SKU')]
+```
+
+```{r}
+Agencies <- sort(unique(full[!duplicated(full[1]),c('Agency')]))
+skus <- sort(unique(full[!duplicated(full[2]),c('SKU')]))
+```
+
+```{r}
+counter = 0
+volume_preds = c()
+for(sku in skus){
+  sku_name <- paste(sku,"")
+  sku_data <- filter(full,SKU %in% c(sku))
+  
+  for (agency in Agencies){
+    agency_name <- paste(agency,"")
+    agency_data <- filter(sku_data, Agency %in% c(agency))
+    
+    final_name <- paste(agency_name,"_",sku_name)
+    final_data <- agency_data[order(agency_data$YearMonth),]
+    counter <- counter+1
+    cat("Processing : ",final_name)
+    if(nrow(final_data) > 0 ){
+      if(get_pred_for_agency_sku(final_data) >= 0){
+        volume_preds[counter] <- get_pred_for_agency_sku(final_data)
+        #volume_preds[counter] <- get_pred_for_agency_sku2(final_data)
+      }else{
+        volume_preds[counter] <- 0
+      }
+    }else{
+      volume_preds[counter] <- 0
+    }
+  }
+}
+```
+
+```{r}
+length(volume_preds)
+
+volume_submission <- read.csv('sample/volume_forecast.csv')
+volume_submission$Volume <- volume_preds
+
+write.csv(volume_submission,'volume_forecast.csv',row.names=F)
+```
+
+```{r}
+get_pred_for_agency_sku <- function(agent_sku_data){
+  ts_series <- ts(agent_sku_data$Volume,frequency = 12)
+  auto_arima_model<-auto.arima(ts_series,ic='aic')
+  pred <- forecast(auto_arima_model,h = 1)
+  return(pred$mean)
+}
+
+get_pred_for_agency_sku2 <- function(agent_sku_data){
+  ts_series <- ts(agent_sku_data$Volume,frequency = 12)
+  auto_arima_model<-auto.arima(ts_series,ic='aic',D = 1)
+  pred <- forecast(auto_arima_model,h = 1)
+  return(pred$mean)
+}
+```
+
+```{r}
+mean_skus = full[c(1,2,4)] %>% group_by(Agency,SKU) %>% summarise_each(funs(mean))
+mean_skus[order(mean_skus$Agency),]
+```
+
+```{r}
+mean_skus_1 = full[c(2,4)] %>% group_by(SKU) %>% summarise_each(funs(mean))
+mean_skus_1[order(mean_skus_1$Volume),]
+```
+
+```{r}
+demograpics <- read.csv('train/demographics.csv')
+library(FNN)
+get.knnx(demograpics$Avg_Yearly_Household_Income_2017,demograpics$Avg_Yearly_Household_Income_2017,k=2,algorithm='kd_tree')
+```
+
+
+
+
+#TESING THE RESULTS FOR AUTO ARIMA
+```{r}
+Agent_1 <- filter(full, Agency %in% c('Agency_55'))
+test <- (filter(Agent_1, SKU %in% c('SKU_01') ))
+
+final_Agent1_SKU_1 <- Agent_1[order(Agent_1$YearMonth),]
+```
+
+```{r}
+test_series <- ts(final_Agent1_SKU_1$Volume,frequency = 12)
+plot(test_series,type="l",lwd=3,col="red",xlab="month",ylab="test_series",main="Time series plot for test_series")
+test_series_decompose<-decompose(test_series)
+plot(test_series_decompose,col='Red')
+```
+```{r}
+par(mfrow=c(3,2))
+acf(test_series,lag=30)
+pacf(test_series,lag=30)
+```
+
+```{r}
+par(mfrow=c(3,2))
+acf(diff(test_series,lag=ndiffs(test_series)),lag=30)
+pacf(diff(test_series,lag=ndiffs(test_series)),lag=30)
+```
+
+```{r}
+auto_arima_test1<-auto.arima(test_series,ic='aic')
+test_pred <- forecast(auto_arima_test1,h = 1)
+test_pred$mean
+```
+
+```{r}
+
+```
+
